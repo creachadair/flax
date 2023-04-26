@@ -1,3 +1,3 @@
-module github.com/creachadair/fluct
+module github.com/creachadair/flax
 
 go 1.20
