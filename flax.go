@@ -1,3 +1,5 @@
+// Copyright (C) 2023 Michael J. Fromberger. All Rights Reserved.
+
 // Package flax implements a helper for attaching flags to the fields of
 // struct values.
 package flax
