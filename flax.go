@@ -28,6 +28,17 @@ func MustBind(fs *flag.FlagSet, v any) {
 	}
 }
 
+// MustCheck constructs a Fields value from the flaggable fields of v, or
+// panics.  This function is intended for use in program initialization;
+// callers who need to check errors should call Check directly.
+func MustCheck(v any) Fields {
+	fields, err := Check(v)
+	if err != nil {
+		panic("check flags: " + err.Error())
+	}
+	return fields
+}
+
 // Bind is shorthand for calling Check and then immediately binding the flags
 // to the specified flag set on success.
 func Bind(v any, fs *flag.FlagSet) error {
