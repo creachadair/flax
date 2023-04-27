@@ -5,7 +5,6 @@
 package flax
 
 import (
-	"encoding"
 	"errors"
 	"flag"
 	"fmt"
@@ -184,16 +183,14 @@ func (fi *Field) Bind(fs *flag.FlagSet) error {
 	case *string:
 		fs.StringVar(t, fi.Name, fi.dvalue, fi.Usage)
 
-	case encoding.TextUnmarshaler:
+	case textFlag:
 		_, err := parseDefault(fi.Name, fi.dvalue, func(s string) (any, error) {
 			return nil, t.UnmarshalText([]byte(s))
 		})
 		if err != nil {
 			return err
 		}
-		// The base value was checked previously for satisfaction.
-		m := fi.target.Interface().(encoding.TextMarshaler)
-		fs.TextVar(t, fi.Name, m, fi.Usage)
+		fs.TextVar(t, fi.Name, t, fi.Usage)
 
 	case *time.Duration:
 		d, err := parseDefault(fi.Name, fi.dvalue, time.ParseDuration)
@@ -265,16 +262,13 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	switch t := fv.Interface().(type) {
 	case bool, float64, int, int64, string, time.Duration, uint, uint64:
 		// OK
-	case encoding.TextMarshaler:
-		// OK if its pointer also implements TextUnmarshaler.
-		tp := fv.Addr().Interface()
-		if _, ok := tp.(encoding.TextUnmarshaler); !ok {
-			return nil, fmt.Errorf("type %T is not text compatible", tp)
-		}
 	default:
-		// OK if its pointer implements flag.Value.
-		tp := fv.Addr().Interface()
-		if _, ok := tp.(flag.Value); !ok {
+		switch fv.Addr().Interface().(type) {
+		case flag.Value:
+		// OK, pointer implements flag.Value
+		case textFlag:
+		// OK, pointer implements encoding.TextUnmarshaler
+		default:
 			return nil, fmt.Errorf("type %T is not flag compatible", t)
 		}
 	}
@@ -292,4 +286,9 @@ func parseDefault[T any](name, s string, parse func(string) (T, error)) (T, erro
 		return zero, fmt.Errorf("invalid default for %q: %w", name, err)
 	}
 	return v, nil
+}
+
+type textFlag interface {
+	MarshalText() ([]byte, error)
+	UnmarshalText([]byte) error
 }
