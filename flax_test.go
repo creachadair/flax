@@ -126,7 +126,7 @@ func mustBind(t *testing.T, input any) {
 	t.Helper()
 
 	fs := flag.NewFlagSet("test", flag.PanicOnError)
-	if err := flax.Bind(input, fs); err != nil {
+	if err := flax.Bind(fs, input); err != nil {
 		t.Fatalf("Bind failed: %v", err)
 	}
 	if err := fs.Parse(nil); err != nil {
