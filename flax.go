@@ -99,6 +99,17 @@ func (f Fields) Bind(fs *flag.FlagSet) error {
 	return nil
 }
 
+// Flag returns the first entry in f whose flag name matches s, or nil if no
+// such entry exists.
+func (f Fields) Flag(s string) *Field {
+	for _, fi := range f {
+		if fi.Name == s {
+			return fi
+		}
+	}
+	return nil
+}
+
 // A Field records information about a single flaggable field in a struct type.
 // The caller can modify the Name and Usage fields if desired before binding
 // the flag to a FlagSet.

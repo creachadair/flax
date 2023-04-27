@@ -4,6 +4,7 @@ package flax_test
 
 import (
 	"flag"
+	"log"
 	"reflect"
 	"testing"
 
@@ -31,7 +32,7 @@ type flagValue struct {
 func (f *flagValue) Set(s string) error { f.value = s; return nil }
 func (f flagValue) String() string      { return f.value }
 
-func TestCheckOK(t *testing.T) {
+func TestBasic(t *testing.T) {
 	// Make sure we can successfully bind all the flag types.
 	var v struct {
 		B   bool      `flag:"bool,Boolean"`
@@ -44,14 +45,40 @@ func TestCheckOK(t *testing.T) {
 		U64 uint64    `flag:"uint64,Uint64"`
 		FV  flagValue `flag:"flag-value,FlagValue"`
 	}
-	fi, err := flax.Check(&v)
-	if err != nil {
-		t.Fatalf("Check failed: %v", err)
-	}
-	fs := flag.NewFlagSet("test", flag.PanicOnError)
-	if err := fi.Bind(fs); err != nil {
-		t.Fatalf("Bind failed: %v", err)
-	}
+	t.Run("CheckBind", func(t *testing.T) {
+		fi, err := flax.Check(&v)
+		if err != nil {
+			t.Fatalf("Check failed: %v", err)
+		}
+		fs := flag.NewFlagSet("test", flag.PanicOnError)
+		if err := fi.Bind(fs); err != nil {
+			t.Fatalf("Bind failed: %v", err)
+		}
+	})
+
+	t.Run("CheckFind", func(t *testing.T) {
+		fi, err := flax.Check(&v)
+		if err != nil {
+			log.Fatalf("Check failed: %v", err)
+		}
+
+		good := []string{
+			"bool", "float64", "int", "int64", "string", "text",
+			"uint", "uint64", "flag-value",
+		}
+		for _, ok := range good {
+			got := fi.Flag(ok)
+			if got == nil {
+				t.Errorf("Flag %q missing", ok)
+			} else if got.Name != ok {
+				t.Errorf("Flag %q found with name %q", ok, got.Name)
+			}
+			bad := fi.Flag(ok + "-not")
+			if bad != nil {
+				t.Errorf("Flag %q unexpectedly found", bad.Name)
+			}
+		}
+	})
 }
 
 func TestCheckError(t *testing.T) {
