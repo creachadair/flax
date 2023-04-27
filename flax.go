@@ -126,97 +126,42 @@ func (f Fields) Flag(s string) *Field {
 type Field struct {
 	Name, Usage string // name and usage text (required)
 
-	dvalue string        // string representation of default (or "")
-	target reflect.Value // target field value
+	dvalue any // concrete type depends on target
+	target any // pointer to target field value
 }
 
 // Bind binds the flag in the given flag set.
 func (fi *Field) Bind(fs *flag.FlagSet) error {
-	vptr := fi.target.Addr().Interface()
-
-	// If the field already implements flag.Value, register that directly.
-	if flagVal, ok := vptr.(flag.Value); ok {
-		if fi.dvalue != "" {
-			err := flagVal.Set(fi.dvalue)
-			if err != nil {
-				return fmt.Errorf("set %q default: %w", fi.Name, err)
-			}
-		}
-		fs.Var(flagVal, fi.Name, fi.Usage)
-		return nil
-	}
-
-	// Otherwise, check for built-in types.
-	switch t := vptr.(type) {
+	switch t := fi.target.(type) {
 	case *bool:
-		d, err := parseDefault(fi.Name, fi.dvalue, strconv.ParseBool)
-		if err != nil {
-			return err
-		}
-		fs.BoolVar(t, fi.Name, d, fi.Usage)
+		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), fi.Usage)
 
 	case *float64:
-		d, err := parseDefault(fi.Name, fi.dvalue, func(s string) (float64, error) {
-			return strconv.ParseFloat(s, 64)
-		})
-		if err != nil {
-			return err
-		}
-		fs.Float64Var(t, fi.Name, d, fi.Usage)
+		fs.Float64Var(t, fi.Name, fi.dvalue.(float64), fi.Usage)
 
 	case *int:
-		d, err := parseDefault(fi.Name, fi.dvalue, strconv.Atoi)
-		if err != nil {
-			return err
-		}
-		fs.IntVar(t, fi.Name, d, fi.Usage)
+		fs.IntVar(t, fi.Name, fi.dvalue.(int), fi.Usage)
 
 	case *int64:
-		d, err := parseDefault(fi.Name, fi.dvalue, func(s string) (int64, error) {
-			return strconv.ParseInt(s, 10, 64)
-		})
-		if err != nil {
-			return err
-		}
-		fs.Int64Var(t, fi.Name, d, fi.Usage)
+		fs.Int64Var(t, fi.Name, fi.dvalue.(int64), fi.Usage)
 
 	case *string:
-		fs.StringVar(t, fi.Name, fi.dvalue, fi.Usage)
+		fs.StringVar(t, fi.Name, fi.dvalue.(string), fi.Usage)
 
 	case textFlag:
-		_, err := parseDefault(fi.Name, fi.dvalue, func(s string) (any, error) {
-			return nil, t.UnmarshalText([]byte(s))
-		})
-		if err != nil {
-			return err
-		}
-		fs.TextVar(t, fi.Name, t, fi.Usage)
+		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), fi.Usage)
 
 	case *time.Duration:
-		d, err := parseDefault(fi.Name, fi.dvalue, time.ParseDuration)
-		if err != nil {
-			return err
-		}
-		fs.DurationVar(vptr.(*time.Duration), fi.Name, d, fi.Usage)
+		fs.DurationVar(t, fi.Name, fi.dvalue.(time.Duration), fi.Usage)
 
 	case *uint:
-		d, err := parseDefault(fi.Name, fi.dvalue, func(s string) (uint, error) {
-			u, err := strconv.ParseUint(s, 10, 64)
-			return uint(u), err
-		})
-		if err != nil {
-			return err
-		}
-		fs.UintVar(t, fi.Name, d, fi.Usage)
+		fs.UintVar(t, fi.Name, fi.dvalue.(uint), fi.Usage)
 
 	case *uint64:
-		d, err := parseDefault(fi.Name, fi.dvalue, func(s string) (uint64, error) {
-			return strconv.ParseUint(s, 10, 64)
-		})
-		if err != nil {
-			return err
-		}
-		fs.Uint64Var(t, fi.Name, d, fi.Usage)
+		fs.Uint64Var(t, fi.Name, fi.dvalue.(uint64), fi.Usage)
+
+	case flag.Value:
+		fs.Var(t, fi.Name, fi.Usage)
 
 	default:
 		return fmt.Errorf("cannot flag type %T", t)
@@ -241,36 +186,108 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		return nil, fmt.Errorf("empty flag name: %q", tag)
 	}
 
+	vptr := fv.Addr().Interface()
 	info := &Field{
 		Name:   parts[0],
 		Usage:  parts[len(parts)-1],
-		target: fv,
+		target: vptr,
 	}
 
 	// Parse options.
+	var dvalue string
 	for _, p := range parts[1 : len(parts)-1] {
 		opt, val, _ := strings.Cut(p, "=")
 		switch opt {
 		case "default":
-			info.dvalue = val
+			dvalue = val
 		default:
 			return nil, fmt.Errorf("unknown option %q", p)
 		}
 	}
 
 	// Check for compatible type.
-	switch t := fv.Interface().(type) {
-	case bool, float64, int, int64, string, time.Duration, uint, uint64:
-		// OK
-	default:
-		switch fv.Addr().Interface().(type) {
-		case flag.Value:
-		// OK, pointer implements flag.Value
-		case textFlag:
-		// OK, pointer implements encoding.TextUnmarshaler
-		default:
-			return nil, fmt.Errorf("type %T is not flag compatible", t)
+	switch t := vptr.(type) {
+	case *bool:
+		d, err := parseDefault(info.Name, dvalue, strconv.ParseBool)
+		if err != nil {
+			return nil, err
 		}
+		info.dvalue = d
+
+	case *float64:
+		d, err := parseDefault(info.Name, dvalue, func(s string) (float64, error) {
+			return strconv.ParseFloat(s, 64)
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case *int:
+		d, err := parseDefault(info.Name, dvalue, strconv.Atoi)
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case *int64:
+		d, err := parseDefault(info.Name, dvalue, func(s string) (int64, error) {
+			return strconv.ParseInt(s, 10, 64)
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case *string:
+		info.dvalue = dvalue
+
+	case textFlag:
+		_, err := parseDefault(info.Name, dvalue, func(s string) (any, error) {
+			return nil, t.UnmarshalText([]byte(s))
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = t
+
+	case *time.Duration:
+		d, err := parseDefault(info.Name, dvalue, time.ParseDuration)
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case *uint:
+		d, err := parseDefault(info.Name, dvalue, func(s string) (uint, error) {
+			u, err := strconv.ParseUint(s, 10, 64)
+			return uint(u), err
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case *uint64:
+		d, err := parseDefault(info.Name, dvalue, func(s string) (uint64, error) {
+			return strconv.ParseUint(s, 10, 64)
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
+
+	case flag.Value:
+		_, err := parseDefault(info.Name, dvalue, func(s string) (any, error) {
+			return nil, t.Set(s)
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = t
+
+	default:
+		return nil, fmt.Errorf("type %T is not flag compatible", t)
 	}
 
 	return info, nil
