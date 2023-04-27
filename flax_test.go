@@ -51,9 +51,7 @@ func TestBasic(t *testing.T) {
 			t.Fatalf("Check failed: %v", err)
 		}
 		fs := flag.NewFlagSet("test", flag.PanicOnError)
-		if err := fi.Bind(fs); err != nil {
-			t.Fatalf("Bind failed: %v", err)
-		}
+		fi.Bind(fs)
 	})
 
 	t.Run("CheckFind", func(t *testing.T) {
@@ -126,9 +124,11 @@ func mustBind(t *testing.T, input any) {
 	t.Helper()
 
 	fs := flag.NewFlagSet("test", flag.PanicOnError)
-	if err := flax.Bind(fs, input); err != nil {
-		t.Fatalf("Bind failed: %v", err)
+	fi, err := flax.Check(input)
+	if err != nil {
+		t.Fatalf("Check failed: %v", err)
 	}
+	fi.Bind(fs)
 	if err := fs.Parse(nil); err != nil {
 		t.Fatalf("Parse flags: %v", err)
 	}

@@ -22,9 +22,8 @@ func MustBind(fs *flag.FlagSet, v any) {
 	fi, err := Check(v)
 	if err != nil {
 		panic("check flags: " + err.Error())
-	} else if err := fi.Bind(fs); err != nil {
-		panic("bind flags: " + err.Error())
 	}
+	fi.Bind(fs)
 }
 
 // MustCheck constructs a Fields value from the flaggable fields of v, or
@@ -36,16 +35,6 @@ func MustCheck(v any) Fields {
 		panic("check flags: " + err.Error())
 	}
 	return fields
-}
-
-// Bind is shorthand for calling Check and then immediately binding the flags
-// to the specified flag set on success.
-func Bind(fs *flag.FlagSet, v any) error {
-	fields, err := Check(v)
-	if err != nil {
-		return err
-	}
-	return fields.Bind(fs)
 }
 
 // Check constructs information about the flaggable fields of v, whose concrete
@@ -100,13 +89,10 @@ func Check(v any) (Fields, error) {
 type Fields []*Field
 
 // Bind attaches the flags defined by f to the given flag set.
-func (f Fields) Bind(fs *flag.FlagSet) error {
+func (f Fields) Bind(fs *flag.FlagSet) {
 	for _, fi := range f {
-		if err := fi.Bind(fs); err != nil {
-			return err
-		}
+		fi.Bind(fs)
 	}
-	return nil
 }
 
 // Flag returns the first entry in f whose flag name matches s, or nil if no
@@ -131,7 +117,7 @@ type Field struct {
 }
 
 // Bind binds the flag in the given flag set.
-func (fi *Field) Bind(fs *flag.FlagSet) error {
+func (fi *Field) Bind(fs *flag.FlagSet) {
 	switch t := fi.target.(type) {
 	case *bool:
 		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), fi.Usage)
@@ -164,9 +150,8 @@ func (fi *Field) Bind(fs *flag.FlagSet) error {
 		fs.Var(t, fi.Name, fi.Usage)
 
 	default:
-		return fmt.Errorf("cannot flag type %T", t)
+		panic(fmt.Sprintf("cannot flag type %T", t))
 	}
-	return nil
 }
 
 var errSkipField = errors.New("skip this field")
