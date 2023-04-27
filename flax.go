@@ -41,7 +41,7 @@ func MustCheck(v any) Fields {
 
 // Bind is shorthand for calling Check and then immediately binding the flags
 // to the specified flag set on success.
-func Bind(v any, fs *flag.FlagSet) error {
+func Bind(fs *flag.FlagSet, v any) error {
 	fields, err := Check(v)
 	if err != nil {
 		return err
