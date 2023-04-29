@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -44,12 +45,13 @@ func MustCheck(v any) Fields {
 // flaggable fields.  An exported field of v is flaggable if it is of a
 // compatible type and has a struct tag with the following form:
 //
-//	flag:"name[,options],Usage string"
+//	flag:"name[,default=V],Usage string"
 //
 // The name and usage string are required. Unexported fields and fields without
-// a flag tag are ignored. The supported options include:
+// a flag tag are ignored. If V contains commas, enclose it in 'single quotes',
+// for example:
 //
-//	default=V   -- specify a default value for the field
+//	flag:"name,default='a, b',Usage string"`
 //
 // Compatible types include bool, float64, int, int64, string, time.Duration,
 // uint, and uint64, as well as any type implementing the flag.Value interface
@@ -164,43 +166,29 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	if !ok {
 		return nil, errSkipField // un-flagged fields are not considered
 	}
-	parts := strings.Split(tag, ",")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid flag tag format: %q", tag)
-	} else if parts[0] == "" {
-		return nil, fmt.Errorf("empty flag name: %q", tag)
+	name, dstring, usage, err := parseFieldTag(tag)
+	if err != nil {
+		return nil, err
 	}
 
 	vptr := fv.Addr().Interface()
 	info := &Field{
-		Name:   parts[0],
-		Usage:  parts[len(parts)-1],
+		Name:   name,
+		Usage:  usage,
 		target: vptr,
-	}
-
-	// Parse options.
-	var dvalue string
-	for _, p := range parts[1 : len(parts)-1] {
-		opt, val, _ := strings.Cut(p, "=")
-		switch opt {
-		case "default":
-			dvalue = val
-		default:
-			return nil, fmt.Errorf("unknown option %q", p)
-		}
 	}
 
 	// Check for compatible type.
 	switch t := vptr.(type) {
 	case *bool:
-		d, err := parseDefault(info.Name, dvalue, strconv.ParseBool)
+		d, err := parseDefault(info.Name, dstring, strconv.ParseBool)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *float64:
-		d, err := parseDefault(info.Name, dvalue, func(s string) (float64, error) {
+		d, err := parseDefault(info.Name, dstring, func(s string) (float64, error) {
 			return strconv.ParseFloat(s, 64)
 		})
 		if err != nil {
@@ -209,14 +197,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *int:
-		d, err := parseDefault(info.Name, dvalue, strconv.Atoi)
+		d, err := parseDefault(info.Name, dstring, strconv.Atoi)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *int64:
-		d, err := parseDefault(info.Name, dvalue, func(s string) (int64, error) {
+		d, err := parseDefault(info.Name, dstring, func(s string) (int64, error) {
 			return strconv.ParseInt(s, 10, 64)
 		})
 		if err != nil {
@@ -225,10 +213,10 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *string:
-		info.dvalue = dvalue
+		info.dvalue = dstring
 
 	case textFlag:
-		_, err := parseDefault(info.Name, dvalue, func(s string) (any, error) {
+		_, err := parseDefault(info.Name, dstring, func(s string) (any, error) {
 			return nil, t.UnmarshalText([]byte(s))
 		})
 		if err != nil {
@@ -237,14 +225,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = t
 
 	case *time.Duration:
-		d, err := parseDefault(info.Name, dvalue, time.ParseDuration)
+		d, err := parseDefault(info.Name, dstring, time.ParseDuration)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *uint:
-		d, err := parseDefault(info.Name, dvalue, func(s string) (uint, error) {
+		d, err := parseDefault(info.Name, dstring, func(s string) (uint, error) {
 			u, err := strconv.ParseUint(s, 10, 64)
 			return uint(u), err
 		})
@@ -254,7 +242,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *uint64:
-		d, err := parseDefault(info.Name, dvalue, func(s string) (uint64, error) {
+		d, err := parseDefault(info.Name, dstring, func(s string) (uint64, error) {
 			return strconv.ParseUint(s, 10, 64)
 		})
 		if err != nil {
@@ -263,7 +251,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case flag.Value:
-		_, err := parseDefault(info.Name, dvalue, func(s string) (any, error) {
+		_, err := parseDefault(info.Name, dstring, func(s string) (any, error) {
 			return nil, t.Set(s)
 		})
 		if err != nil {
@@ -276,6 +264,23 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	}
 
 	return info, nil
+}
+
+var tagRE = regexp.MustCompile(`^([^,]*)(?:,default=('[^']*'|[^,]*))?,(.*)$`)
+
+func parseFieldTag(s string) (name, dstring, usage string, _ error) {
+	m := tagRE.FindStringSubmatch(s)
+	if m == nil {
+		return "", "", "", fmt.Errorf("invalid flag tag format %q", s)
+	}
+	name, dstring, usage = m[1], m[2], m[3]
+	if name == "" {
+		return "", "", "", errors.New("empty flag name")
+	}
+	if strings.HasPrefix(dstring, "'") {
+		dstring = dstring[1 : len(dstring)-1] // remove 'quotations'
+	}
+	return
 }
 
 func parseDefault[T any](name, s string, parse func(string) (T, error)) (T, error) {

@@ -105,10 +105,6 @@ func TestCheckError(t *testing.T) {
 		{"empty name", &struct {
 			S string `flag:",empty name"`
 		}{}},
-
-		{"invalid option", &struct {
-			S string `flag:"ok,what,usage"`
-		}{}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.label, func(t *testing.T) {
@@ -165,6 +161,10 @@ func TestBindDefaults(t *testing.T) {
 		{"string", &struct {
 			X string `flag:"x,default=cork bat,y"`
 		}{}, "cork bat"},
+
+		{"complex string", &struct {
+			X string `flag:"x,default='a, b, c',y"`
+		}{}, "a, b, c"},
 
 		{"text", &struct {
 			X textFlag `flag:"x,default=bleep,y"`
