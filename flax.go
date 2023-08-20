@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -52,6 +53,10 @@ func MustCheck(v any) Fields {
 // for example:
 //
 //	flag:"name,default='a, b',Usage string"`
+//
+// If the default value begins with "$", it is interpreted as the name of an
+// environment variable to read for the default. Double the "$" to escape this
+// interpretation.
 //
 // Compatible types include bool, float64, int, int64, string, time.Duration,
 // uint, and uint64, as well as any type implementing the flag.Value interface
@@ -213,7 +218,11 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *string:
-		info.dvalue = dstring
+		// We call parseDefault here for the env handling; it can't fail.
+		d, _ := parseDefault(info.Name, dstring, func(s string) (string, error) {
+			return s, nil
+		})
+		info.dvalue = d
 
 	case textFlag:
 		_, err := parseDefault(info.Name, dstring, func(s string) (any, error) {
@@ -284,6 +293,11 @@ func parseFieldTag(s string) (name, dstring, usage string, _ error) {
 }
 
 func parseDefault[T any](name, s string, parse func(string) (T, error)) (T, error) {
+	if strings.HasPrefix(s, "$$") {
+		s = s[1:] // unescape leading "$"
+	} else if strings.HasPrefix(s, "$") {
+		s = os.Getenv(s[1:]) // read default from environment
+	}
 	var zero T
 	if s == "" {
 		return zero, nil

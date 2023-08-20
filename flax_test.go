@@ -5,6 +5,7 @@ package flax_test
 import (
 	"flag"
 	"log"
+	"os"
 	"reflect"
 	"testing"
 
@@ -136,6 +137,7 @@ func fieldValue(v any, name string) any {
 }
 
 func TestBindDefaults(t *testing.T) {
+	os.Setenv("TEST_INT", "12345")
 	const name = "X"
 	tests := []struct {
 		label string
@@ -154,6 +156,10 @@ func TestBindDefaults(t *testing.T) {
 			X int `flag:"x,default=13,y"`
 		}{}, 13},
 
+		{"int from env", &struct {
+			X int `flag:"x,default=$TEST_INT,y"`
+		}{}, 12345},
+
 		{"int64", &struct {
 			X int64 `flag:"x,default=7,y"`
 		}{}, int64(7)},
@@ -165,6 +171,14 @@ func TestBindDefaults(t *testing.T) {
 		{"complex string", &struct {
 			X string `flag:"x,default='a, b, c',y"`
 		}{}, "a, b, c"},
+
+		{"env string", &struct {
+			X string `flag:"x,default=$TEST_INT,y"`
+		}{}, "12345"},
+
+		{"env esc string", &struct {
+			X string `flag:"x,default=$$TEST_INT,y"`
+		}{}, "$TEST_INT"},
 
 		{"text", &struct {
 			X textFlag `flag:"x,default=bleep,y"`
