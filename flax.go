@@ -28,6 +28,13 @@ func MustBind(fs *flag.FlagSet, v any) {
 	fi.Bind(fs)
 }
 
+// MustBindAll is shorthand for calling MustBind(fs, v) for each v in vs.
+func MustBindAll(fs *flag.FlagSet, vs ...any) {
+	for _, v := range vs {
+		MustBind(fs, v)
+	}
+}
+
 // MustCheck constructs a Fields value from the flaggable fields of v, or
 // panics.  This function is intended for use in program initialization;
 // callers who need to check errors should call Check directly.

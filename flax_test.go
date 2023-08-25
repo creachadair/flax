@@ -117,6 +117,24 @@ func TestCheckError(t *testing.T) {
 	}
 }
 
+func TestMustBindAll(t *testing.T) {
+	var v1 struct {
+		S string `flag:"s,default='ok go',string"`
+	}
+	var v2 struct {
+		Z int `flag:"z,default=25,int"`
+	}
+
+	fs := flag.NewFlagSet("test", flag.PanicOnError)
+	flax.MustBindAll(fs, &v1, &v2)
+	if want := "ok go"; v1.S != want {
+		t.Errorf("S: got %q, want %q", v1.S, want)
+	}
+	if want := 25; v2.Z != want {
+		t.Errorf("Z: got %d, want %d", v2.Z, want)
+	}
+}
+
 func mustBind(t *testing.T, input any) {
 	t.Helper()
 
