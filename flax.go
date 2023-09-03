@@ -65,6 +65,10 @@ func MustCheck(v any) Fields {
 // environment variable to read for the default. Double the "$" to escape this
 // interpretation.
 //
+// If the default value is "*", it means to use the existing value of the
+// target field as the default, rather than a zero. Use "**" to escape this
+// meaning to get a literal star.
+//
 // Compatible types include bool, float64, int, int64, string, time.Duration,
 // uint, and uint64, as well as any type implementing the flag.Value interface
 // or the encoding.TextMarshaler and encoding.TextUnmarshaler interfaces.
@@ -193,14 +197,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	// Check for compatible type.
 	switch t := vptr.(type) {
 	case *bool:
-		d, err := parseDefault(info.Name, dstring, strconv.ParseBool)
+		d, err := parseDefault(info.Name, dstring, *t, strconv.ParseBool)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *float64:
-		d, err := parseDefault(info.Name, dstring, func(s string) (float64, error) {
+		d, err := parseDefault(info.Name, dstring, *t, func(s string) (float64, error) {
 			return strconv.ParseFloat(s, 64)
 		})
 		if err != nil {
@@ -209,14 +213,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *int:
-		d, err := parseDefault(info.Name, dstring, strconv.Atoi)
+		d, err := parseDefault(info.Name, dstring, *t, strconv.Atoi)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *int64:
-		d, err := parseDefault(info.Name, dstring, func(s string) (int64, error) {
+		d, err := parseDefault(info.Name, dstring, *t, func(s string) (int64, error) {
 			return strconv.ParseInt(s, 10, 64)
 		})
 		if err != nil {
@@ -226,13 +230,13 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 
 	case *string:
 		// We call parseDefault here for the env handling; it can't fail.
-		d, _ := parseDefault(info.Name, dstring, func(s string) (string, error) {
+		d, _ := parseDefault(info.Name, dstring, *t, func(s string) (string, error) {
 			return s, nil
 		})
 		info.dvalue = d
 
 	case textFlag:
-		_, err := parseDefault(info.Name, dstring, func(s string) (any, error) {
+		_, err := parseDefault(info.Name, dstring, nil, func(s string) (any, error) {
 			return nil, t.UnmarshalText([]byte(s))
 		})
 		if err != nil {
@@ -241,14 +245,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = t
 
 	case *time.Duration:
-		d, err := parseDefault(info.Name, dstring, time.ParseDuration)
+		d, err := parseDefault(info.Name, dstring, *t, time.ParseDuration)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *uint:
-		d, err := parseDefault(info.Name, dstring, func(s string) (uint, error) {
+		d, err := parseDefault(info.Name, dstring, *t, func(s string) (uint, error) {
 			u, err := strconv.ParseUint(s, 10, 64)
 			return uint(u), err
 		})
@@ -258,7 +262,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *uint64:
-		d, err := parseDefault(info.Name, dstring, func(s string) (uint64, error) {
+		d, err := parseDefault(info.Name, dstring, *t, func(s string) (uint64, error) {
 			return strconv.ParseUint(s, 10, 64)
 		})
 		if err != nil {
@@ -267,7 +271,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case flag.Value:
-		_, err := parseDefault(info.Name, dstring, func(s string) (any, error) {
+		_, err := parseDefault(info.Name, dstring, nil, func(s string) (any, error) {
 			return nil, t.Set(s)
 		})
 		if err != nil {
@@ -299,11 +303,15 @@ func parseFieldTag(s string) (name, dstring, usage string, _ error) {
 	return
 }
 
-func parseDefault[T any](name, s string, parse func(string) (T, error)) (T, error) {
+func parseDefault[T any](name, s string, self T, parse func(string) (T, error)) (T, error) {
 	if strings.HasPrefix(s, "$$") {
 		s = s[1:] // unescape leading "$"
 	} else if strings.HasPrefix(s, "$") {
 		s = os.Getenv(s[1:]) // read default from environment
+	} else if s == "**" {
+		s = "*"
+	} else if s == "*" {
+		return self, nil
 	}
 	var zero T
 	if s == "" {

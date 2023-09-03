@@ -213,6 +213,26 @@ func TestBindDefaults(t *testing.T) {
 		{"flagValue", &struct {
 			X flagValue `flag:"x,default=rumplestiltskin,y"`
 		}{}, flagValue{"rumplestiltskin"}},
+
+		{"self string", &struct {
+			X string `flag:"x,default=*,y"`
+		}{X: "foo"}, "foo"},
+
+		{"self int", &struct {
+			X int `flag:"x,default=*,y"`
+		}{X: 25}, int(25)},
+
+		{"star string", &struct {
+			X string `flag:"x,default=**,y"` // doubled, use a literal "*"
+		}{X: "foo"}, "*"},
+
+		{"self flagValue", &struct {
+			X flagValue `flag:"x,default=*,y"`
+		}{X: flagValue{"qqq"}}, flagValue{"qqq"}},
+
+		{"star flagValue", &struct {
+			X flagValue `flag:"x,default=**,y"`
+		}{X: flagValue{"qqq"}}, flagValue{"*"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.label, func(t *testing.T) {
