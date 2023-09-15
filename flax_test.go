@@ -202,6 +202,10 @@ func TestBindDefaults(t *testing.T) {
 			X textFlag `flag:"x,default=bleep,y"`
 		}{}, textFlag{"bleep"}},
 
+		{"star text", &struct {
+			X textFlag `flag:"x,default=*,y"`
+		}{X: textFlag{"horsefeathers"}}, textFlag{"horsefeathers"}},
+
 		{"uint", &struct {
 			X uint `flag:"x,default=99,y"`
 		}{}, uint(99)},
