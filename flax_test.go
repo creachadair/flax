@@ -190,6 +190,10 @@ func TestBindDefaults(t *testing.T) {
 			X string `flag:"x,default='a, b, c',y"`
 		}{}, "a, b, c"},
 
+		{"internal quotes", &struct {
+			X string `flag:"x,default='p,'',q',y"`
+		}{}, "p,',q"},
+
 		{"env string", &struct {
 			X string `flag:"x,default=$TEST_INT,y"`
 		}{}, "12345"},

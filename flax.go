@@ -61,9 +61,9 @@ func MustCheck(v any) Fields {
 //
 //	flag:"name,default='a, b',Usage string"`
 //
-// If the default value begins with "$", it is interpreted as the name of an
-// environment variable to read for the default. Double the "$" to escape this
-// interpretation.
+// To escape a quote, double it ("”").  If the default value begins with "$",
+// it is interpreted as the name of an environment variable to read for the
+// default. Double the "$" to escape this interpretation.
 //
 // If the default value is "*", it means to use the existing value of the
 // target field as the default, rather than a zero. Use "**" to escape this
@@ -286,19 +286,31 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	return info, nil
 }
 
-var tagRE = regexp.MustCompile(`^([^,]*)(?:,default=('[^']*'|[^,]*))?,(.*)$`)
+// Quoted default: ' ... ', allows "," and single quotes (as ”).
+// Plain default:  ..., no "," or single quotes.
+var defaultRE = regexp.MustCompile(`^('(?:[^']|'')*'|[^,']*),(.*)$`)
 
 func parseFieldTag(s string) (name, dstring, usage string, _ error) {
-	m := tagRE.FindStringSubmatch(s)
-	if m == nil {
+	// Simple format: "name,usage"
+	// Default format: "name,default=V,usage"
+
+	name, usage, ok := strings.Cut(s, ",")
+	if !ok {
 		return "", "", "", fmt.Errorf("invalid flag tag format %q", s)
 	}
-	name, dstring, usage = m[1], m[2], m[3]
+
+	if d, ok := strings.CutPrefix(usage, "default="); ok {
+		m := defaultRE.FindStringSubmatch(d)
+		if m == nil {
+			return "", "", "", fmt.Errorf("invalid default format %q", d)
+		}
+		dstring, usage = m[1], m[2]
+		if strings.HasPrefix(dstring, "'") {
+			dstring = strings.ReplaceAll(dstring[1:len(dstring)-1], "''", "'") // remove 'quotations'
+		}
+	}
 	if name == "" {
 		return "", "", "", errors.New("empty flag name")
-	}
-	if strings.HasPrefix(dstring, "'") {
-		dstring = dstring[1 : len(dstring)-1] // remove 'quotations'
 	}
 	return
 }
