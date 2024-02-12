@@ -134,7 +134,7 @@ type Field struct {
 	target any // pointer to target field value
 }
 
-// Bind binds the flag in the given flag set.
+// Bind registers the field described by f in the given flag set.
 func (fi *Field) Bind(fs *flag.FlagSet) {
 	switch t := fi.target.(type) {
 	case *bool:
