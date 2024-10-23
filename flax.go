@@ -69,6 +69,12 @@ func MustCheck(v any) Fields {
 // target field as the default, rather than a zero. Use "**" to escape this
 // meaning to get a literal star.
 //
+// As an alternative, a default may be specified separately via:
+//
+//	flag-default:"a, b"
+//
+// The two forms are mutually exclusive, even if the values are identical.
+//
 // Compatible types include bool, float64, int, int64, string, time.Duration,
 // uint, and uint64, as well as any type implementing the flag.Value interface
 // or the encoding.TextMarshaler and encoding.TextUnmarshaler interfaces.
@@ -185,6 +191,12 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	name, dstring, usage, err := parseFieldTag(tag)
 	if err != nil {
 		return nil, err
+	}
+	if dtag, ok := ft.Tag.Lookup("flag-default"); ok {
+		if dstring != "" {
+			return nil, fmt.Errorf("field %q default tag and string are both set", ft.Name)
+		}
+		dstring = dtag
 	}
 
 	vptr := fv.Addr().Interface()

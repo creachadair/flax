@@ -165,81 +165,141 @@ func TestBindDefaults(t *testing.T) {
 		{"bool", &struct {
 			X bool `flag:"x,default=true,y"`
 		}{}, true},
+		{"bool tag", &struct {
+			X bool `flag:"x,y" flag-default:"true"`
+		}{}, true},
 
 		{"float64", &struct {
 			X float64 `flag:"x,default=0.25,y"`
+		}{}, 0.25},
+		{"float64 tag", &struct {
+			X float64 `flag:"x,y" flag-default:"0.25"`
 		}{}, 0.25},
 
 		{"int", &struct {
 			X int `flag:"x,default=13,y"`
 		}{}, 13},
+		{"int tag", &struct {
+			X int `flag:"x,y" flag-default:"13"`
+		}{}, 13},
 
 		{"int from env", &struct {
 			X int `flag:"x,default=$TEST_INT,y"`
+		}{}, 12345},
+		{"int from env tag", &struct {
+			X int `flag:"x,y" flag-default:"$TEST_INT"`
 		}{}, 12345},
 
 		{"int64", &struct {
 			X int64 `flag:"x,default=7,y"`
 		}{}, int64(7)},
+		{"int64 tag", &struct {
+			X int64 `flag:"x,y" flag-default:"7"`
+		}{}, int64(7)},
 
 		{"string", &struct {
 			X string `flag:"x,default=cork bat,y"`
+		}{}, "cork bat"},
+		{"string tag", &struct {
+			X string `flag:"x,y" flag-default:"cork bat"`
 		}{}, "cork bat"},
 
 		{"complex string", &struct {
 			X string `flag:"x,default='a, b, c',y"`
 		}{}, "a, b, c"},
+		{"complex string tag", &struct {
+			X string `flag:"x,y" flag-default:"a, b, c"`
+		}{}, "a, b, c"},
 
 		{"internal quotes", &struct {
 			X string `flag:"x,default='p,'',q',y"`
+		}{}, "p,',q"},
+		{"internal quotes tag", &struct {
+			X string `flag:"x,y" flag-default:"p,',q"`
 		}{}, "p,',q"},
 
 		{"env string", &struct {
 			X string `flag:"x,default=$TEST_INT,y"`
 		}{}, "12345"},
+		{"env string tag", &struct {
+			X string `flag:"x,y" flag-default:"$TEST_INT"`
+		}{}, "12345"},
 
 		{"env esc string", &struct {
-			X string `flag:"x,default=$$TEST_INT,y"`
+			X string `flag:"x,default=$$TEST_INT,y"` // doubled, do not expand
+		}{}, "$TEST_INT"},
+		{"env esc string tag", &struct {
+			X string `flag:"x,y" flag-default:"$$TEST_INT"` // doubled, do not expand
 		}{}, "$TEST_INT"},
 
-		{"text", &struct {
+		{"text tag", &struct {
 			X textFlag `flag:"x,default=bleep,y"`
+		}{}, textFlag{"bleep"}},
+		{"text", &struct {
+			X textFlag `flag:"x,y" flag-default:"bleep"`
 		}{}, textFlag{"bleep"}},
 
 		{"star text", &struct {
 			X textFlag `flag:"x,default=*,y"`
 		}{X: textFlag{"horsefeathers"}}, textFlag{"horsefeathers"}},
+		{"star text tag", &struct {
+			X textFlag `flag:"x,y" flag-default:"*"`
+		}{X: textFlag{"horsefeathers"}}, textFlag{"horsefeathers"}},
 
-		{"uint", &struct {
+		{"uint tag", &struct {
 			X uint `flag:"x,default=99,y"`
+		}{}, uint(99)},
+		{"uint tag tag", &struct {
+			X uint `flag:"x,y" flag-default:"99"`
 		}{}, uint(99)},
 
 		{"uint64", &struct {
 			X uint64 `flag:"x,default=21,y"`
 		}{}, uint64(21)},
+		{"uint64 tag", &struct {
+			X uint64 `flag:"x,y" flag-default:"21"`
+		}{}, uint64(21)},
 
 		{"flagValue", &struct {
 			X flagValue `flag:"x,default=rumplestiltskin,y"`
+		}{}, flagValue{"rumplestiltskin"}},
+		{"flagValue tag", &struct {
+			X flagValue `flag:"x,y" flag-default:"rumplestiltskin"`
 		}{}, flagValue{"rumplestiltskin"}},
 
 		{"self string", &struct {
 			X string `flag:"x,default=*,y"`
 		}{X: "foo"}, "foo"},
+		{"self string tag", &struct {
+			X string `flag:"x,y" flag-default:"*"`
+		}{X: "foo"}, "foo"},
 
 		{"self int", &struct {
 			X int `flag:"x,default=*,y"`
+		}{X: 25}, int(25)},
+		{"self int tag", &struct {
+			X int `flag:"x,y" flag-default:"*"`
 		}{X: 25}, int(25)},
 
 		{"star string", &struct {
 			X string `flag:"x,default=**,y"` // doubled, use a literal "*"
 		}{X: "foo"}, "*"},
+		{"star string tag", &struct {
+			X string `flag:"x,y" flag-default:"**"` // doubled, use a literal "*"
+		}{X: "foo"}, "*"},
 
 		{"self flagValue", &struct {
 			X flagValue `flag:"x,default=*,y"`
 		}{X: flagValue{"qqq"}}, flagValue{"qqq"}},
+		{"self flagValue tag", &struct {
+			X flagValue `flag:"x,y" flag-default:"*"`
+		}{X: flagValue{"qqq"}}, flagValue{"qqq"}},
 
 		{"star flagValue", &struct {
 			X flagValue `flag:"x,default=**,y"`
+		}{X: flagValue{"qqq"}}, flagValue{"*"}},
+		{"star flagValue tag", &struct {
+			X flagValue `flag:"x,y" flag-default:"**"`
 		}{X: flagValue{"qqq"}}, flagValue{"*"}},
 	}
 	for _, tc := range tests {
@@ -250,5 +310,17 @@ func TestBindDefaults(t *testing.T) {
 				t.Fatalf("Field %q: got %v, want %v", name, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBindDefaultConflict(t *testing.T) {
+	var flags struct {
+		Conf string `flag:"conf,default=x,Conflict" flag-default:"x"`
+	}
+	f, err := flax.Check(&flags)
+	if err == nil {
+		t.Errorf("Check %T: got %v, want error", flags, f)
+	} else {
+		t.Logf("Got expected error: %v", err)
 	}
 }
