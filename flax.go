@@ -136,42 +136,47 @@ func (f Fields) Flag(s string) *Field {
 type Field struct {
 	Name, Usage string // name and usage text (required)
 
-	dvalue any // concrete type depends on target
-	target any // pointer to target field value
+	env    string // environment variable from which default is read
+	dvalue any    // concrete type depends on target
+	target any    // pointer to target field value
 }
 
 // Bind registers the field described by f in the given flag set.
 func (fi *Field) Bind(fs *flag.FlagSet) {
+	usage := fi.Usage
+	if fi.env != "" {
+		usage += fmt.Sprintf(" [env: %s]", fi.env)
+	}
 	switch t := fi.target.(type) {
 	case *bool:
-		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), fi.Usage)
+		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), usage)
 
 	case *float64:
-		fs.Float64Var(t, fi.Name, fi.dvalue.(float64), fi.Usage)
+		fs.Float64Var(t, fi.Name, fi.dvalue.(float64), usage)
 
 	case *int:
-		fs.IntVar(t, fi.Name, fi.dvalue.(int), fi.Usage)
+		fs.IntVar(t, fi.Name, fi.dvalue.(int), usage)
 
 	case *int64:
-		fs.Int64Var(t, fi.Name, fi.dvalue.(int64), fi.Usage)
+		fs.Int64Var(t, fi.Name, fi.dvalue.(int64), usage)
 
 	case *string:
-		fs.StringVar(t, fi.Name, fi.dvalue.(string), fi.Usage)
+		fs.StringVar(t, fi.Name, fi.dvalue.(string), usage)
 
 	case textFlag:
-		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), fi.Usage)
+		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), usage)
 
 	case *time.Duration:
-		fs.DurationVar(t, fi.Name, fi.dvalue.(time.Duration), fi.Usage)
+		fs.DurationVar(t, fi.Name, fi.dvalue.(time.Duration), usage)
 
 	case *uint:
-		fs.UintVar(t, fi.Name, fi.dvalue.(uint), fi.Usage)
+		fs.UintVar(t, fi.Name, fi.dvalue.(uint), usage)
 
 	case *uint64:
-		fs.Uint64Var(t, fi.Name, fi.dvalue.(uint64), fi.Usage)
+		fs.Uint64Var(t, fi.Name, fi.dvalue.(uint64), usage)
 
 	case flag.Value:
-		fs.Var(t, fi.Name, fi.Usage)
+		fs.Var(t, fi.Name, usage)
 
 	default:
 		panic(fmt.Sprintf("cannot flag type %T", t))
@@ -209,14 +214,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	// Check for compatible type.
 	switch t := vptr.(type) {
 	case *bool:
-		d, err := parseDefault(info.Name, dstring, *t, strconv.ParseBool)
+		d, err := parseDefault(info, dstring, *t, strconv.ParseBool)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *float64:
-		d, err := parseDefault(info.Name, dstring, *t, func(s string) (float64, error) {
+		d, err := parseDefault(info, dstring, *t, func(s string) (float64, error) {
 			return strconv.ParseFloat(s, 64)
 		})
 		if err != nil {
@@ -225,14 +230,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *int:
-		d, err := parseDefault(info.Name, dstring, *t, strconv.Atoi)
+		d, err := parseDefault(info, dstring, *t, strconv.Atoi)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *int64:
-		d, err := parseDefault(info.Name, dstring, *t, func(s string) (int64, error) {
+		d, err := parseDefault(info, dstring, *t, func(s string) (int64, error) {
 			return strconv.ParseInt(s, 10, 64)
 		})
 		if err != nil {
@@ -242,13 +247,13 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 
 	case *string:
 		// We call parseDefault here for the env handling; it can't fail.
-		d, _ := parseDefault(info.Name, dstring, *t, func(s string) (string, error) {
+		d, _ := parseDefault(info, dstring, *t, func(s string) (string, error) {
 			return s, nil
 		})
 		info.dvalue = d
 
 	case textFlag:
-		_, err := parseDefault(info.Name, dstring, nil, func(s string) (any, error) {
+		_, err := parseDefault(info, dstring, nil, func(s string) (any, error) {
 			return nil, t.UnmarshalText([]byte(s))
 		})
 		if err != nil {
@@ -257,14 +262,14 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = t
 
 	case *time.Duration:
-		d, err := parseDefault(info.Name, dstring, *t, time.ParseDuration)
+		d, err := parseDefault(info, dstring, *t, time.ParseDuration)
 		if err != nil {
 			return nil, err
 		}
 		info.dvalue = d
 
 	case *uint:
-		d, err := parseDefault(info.Name, dstring, *t, func(s string) (uint, error) {
+		d, err := parseDefault(info, dstring, *t, func(s string) (uint, error) {
 			u, err := strconv.ParseUint(s, 10, 64)
 			return uint(u), err
 		})
@@ -274,7 +279,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case *uint64:
-		d, err := parseDefault(info.Name, dstring, *t, func(s string) (uint64, error) {
+		d, err := parseDefault(info, dstring, *t, func(s string) (uint64, error) {
 			return strconv.ParseUint(s, 10, 64)
 		})
 		if err != nil {
@@ -283,7 +288,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		info.dvalue = d
 
 	case flag.Value:
-		_, err := parseDefault(info.Name, dstring, nil, func(s string) (any, error) {
+		_, err := parseDefault(info, dstring, nil, func(s string) (any, error) {
 			return nil, t.Set(s)
 		})
 		if err != nil {
@@ -327,11 +332,12 @@ func parseFieldTag(s string) (name, dstring, usage string, _ error) {
 	return
 }
 
-func parseDefault[T any](name, s string, self T, parse func(string) (T, error)) (T, error) {
+func parseDefault[T any](f *Field, s string, self T, parse func(string) (T, error)) (T, error) {
 	if strings.HasPrefix(s, "$$") {
 		s = s[1:] // unescape leading "$"
-	} else if strings.HasPrefix(s, "$") {
-		s = os.Getenv(s[1:]) // read default from environment
+	} else if env, ok := strings.CutPrefix(s, "$"); ok {
+		f.env = env
+		s = os.Getenv(env) // read default from environment
 	} else if s == "**" {
 		s = "*"
 	} else if s == "*" {
@@ -343,7 +349,7 @@ func parseDefault[T any](name, s string, self T, parse func(string) (T, error)) 
 	}
 	v, err := parse(s)
 	if err != nil {
-		return zero, fmt.Errorf("invalid default for %q: %w", name, err)
+		return zero, fmt.Errorf("invalid default for %q: %w", f.Name, err)
 	}
 	return v, nil
 }

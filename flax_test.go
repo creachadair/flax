@@ -3,10 +3,12 @@
 package flax_test
 
 import (
+	"bytes"
 	"flag"
 	"log"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/creachadair/flax"
@@ -135,7 +137,7 @@ func TestMustBindAll(t *testing.T) {
 	}
 }
 
-func mustBind(t *testing.T, input any) {
+func mustBind(t *testing.T, input any) *flag.FlagSet {
 	t.Helper()
 
 	fs := flag.NewFlagSet("test", flag.PanicOnError)
@@ -147,6 +149,7 @@ func mustBind(t *testing.T, input any) {
 	if err := fs.Parse(nil); err != nil {
 		t.Fatalf("Parse flags: %v", err)
 	}
+	return fs
 }
 
 func fieldValue(v any, name string) any {
@@ -322,5 +325,51 @@ func TestBindDefaultConflict(t *testing.T) {
 		t.Errorf("Check %T: got %v, want error", flags, f)
 	} else {
 		t.Logf("Got expected error: %v", err)
+	}
+}
+
+func TestEnvDefaultText(t *testing.T) {
+	// Set up an environment default for one of the probe cases.
+	// This must happen before the flags are parsed.
+	t.Setenv("P", "12345")
+
+	var flags struct {
+		A int `flag:"apple,default=$A,The first flag"`
+		P int `flag:"pear,The second flag" flag-default:"$P"`
+		C int `flag:"cherry,default=222,The third flag"`
+		U int `flag:"plum,The fourth flag"`
+	}
+	fs := mustBind(t, &flags)
+
+	// Render the help text into a buffer and make sure we got the expected
+	// label strings.
+	var help bytes.Buffer
+	fs.SetOutput(&help)
+	fs.PrintDefaults()
+	lines := strings.Split(help.String(), "\n")
+
+	checks := []struct {
+		probe  string // select a line
+		needle string // search within the line
+		want   bool   // needle should be present?
+	}{
+		{"first flag", "[env: A]", true},
+		{"first flag", "default", false},
+		{"second flag", "[env: P]", true},
+		{"second flag", "(default 12345)", true},
+		{"third flag", "[env:", false},
+		{"third flag", "(default 222)", true},
+		{"fourth flag", "[env:", false},
+		{"fourth flag", "default", false},
+	}
+	for _, c := range checks {
+		for _, line := range lines {
+			if strings.Contains(line, c.probe) {
+				if strings.Contains(line, c.needle) != c.want {
+					t.Errorf("Line matching %q:\ngot:  %s\nwant: %s", c.probe, strings.TrimSpace(line), c.needle)
+				}
+				break
+			}
+		}
 	}
 }
