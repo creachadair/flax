@@ -59,7 +59,7 @@ func MustCheck(v any) Fields {
 // a flag tag are ignored. If V contains commas, enclose it in 'single quotes',
 // for example:
 //
-//	flag:"name,default='a, b',Usage string"`
+//	flag:"name,default='a, b',Usage string"
 //
 // To escape a quote, double it ("”").  If the default value begins with "$",
 // it is interpreted as the name of an environment variable to read for the
