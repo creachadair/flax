@@ -19,7 +19,7 @@ import (
 // MustBind binds the flaggable fields of v to fs, or panics. The concrete type
 // of v must be a pointer to a value of struct type.  This function is intended
 // for use in program initialization; callers who need to check errors should
-// call Bind or Check.
+// call [Check] and [Fields.Bind].
 func MustBind(fs *flag.FlagSet, v any) {
 	fi, err := Check(v)
 	if err != nil {
@@ -35,9 +35,9 @@ func MustBindAll(fs *flag.FlagSet, vs ...any) {
 	}
 }
 
-// MustCheck constructs a Fields value from the flaggable fields of v, or
+// MustCheck constructs a [Fields] value from the flaggable fields of v, or
 // panics.  This function is intended for use in program initialization;
-// callers who need to check errors should call Check directly.
+// callers who need to check errors should call [Check] directly.
 func MustCheck(v any) Fields {
 	fields, err := Check(v)
 	if err != nil {
@@ -75,9 +75,9 @@ func MustCheck(v any) Fields {
 //
 // The two forms are mutually exclusive, even if the values are identical.
 //
-// Compatible types include bool, float64, int, int64, string, time.Duration,
-// uint, and uint64, as well as any type implementing the flag.Value interface
-// or the encoding.TextMarshaler and encoding.TextUnmarshaler interfaces.
+// Compatible types include bool, float64, int, int64, string, [time.Duration],
+// uint, and uint64, as well as any type implementing the [flag.Value] interface
+// or the [encoding.TextMarshaler] and [encoding.TextUnmarshaler] interfaces.
 func Check(v any) (Fields, error) {
 	if v == nil {
 		return nil, errors.New("value is nil")
@@ -132,7 +132,7 @@ func (f Fields) Flag(s string) *Field {
 
 // A Field records information about a single flaggable field in a struct type.
 // The caller can modify the Name and Usage fields if desired before binding
-// the flag to a FlagSet.
+// the flag to a [flag.FlagSet].
 type Field struct {
 	Name, Usage string // name and usage text (required)
 
