@@ -373,3 +373,23 @@ func TestEnvDefaultText(t *testing.T) {
 		}
 	}
 }
+
+func TestField_Env(t *testing.T) {
+	fs, err := flax.Check(&struct {
+		A int `flag:"a,default=$FOO,First flag"`
+		B int `flag:"b,Second flag"`
+	}{})
+	if err != nil {
+		t.Fatalf("Check failed: %v", err)
+	}
+	if f := fs.Flag("a"); f == nil {
+		t.Fatal("Flag a not found")
+	} else if got, want := f.Env(), "FOO"; got != want {
+		t.Errorf("Flag a env: got %q, want %q", got, want)
+	}
+	if f := fs.Flag("b"); f == nil {
+		t.Fatal("Flag b not found")
+	} else if got, want := f.Env(), ""; got != want {
+		t.Errorf("Flag b env: got %q, want %q", got, want)
+	}
+}

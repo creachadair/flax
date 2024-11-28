@@ -183,6 +183,10 @@ func (fi *Field) Bind(fs *flag.FlagSet) {
 	}
 }
 
+// Env reports the name of the environment variable used as the default value
+// for fi. It returns "" if the field does not use an environment variable.
+func (fi *Field) Env() string { return fi.env }
+
 var errSkipField = errors.New("skip this field")
 
 func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
