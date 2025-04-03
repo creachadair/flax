@@ -35,6 +35,12 @@ type flagValue struct {
 func (f *flagValue) Set(s string) error { f.value = s; return nil }
 func (f flagValue) String() string      { return f.value }
 
+// bothValue is a type that implements both flag.Value and text marshaling.
+type bothValue struct {
+	textFlag
+	flagValue
+}
+
 func TestBasic(t *testing.T) {
 	// Make sure we can successfully bind all the flag types.
 	var v struct {
@@ -47,6 +53,7 @@ func TestBasic(t *testing.T) {
 		U   uint      `flag:"uint,Uint"`
 		U64 uint64    `flag:"uint64,Uint64"`
 		FV  flagValue `flag:"flag-value,FlagValue"`
+		BV  bothValue `flag:"flag-and-text,FlagAndText"`
 	}
 	t.Run("CheckBind", func(t *testing.T) {
 		fi, err := flax.Check(&v)
@@ -65,7 +72,7 @@ func TestBasic(t *testing.T) {
 
 		good := []string{
 			"bool", "float64", "int", "int64", "string", "text",
-			"uint", "uint64", "flag-value",
+			"uint", "uint64", "flag-value", "flag-and-text",
 		}
 		for _, ok := range good {
 			got := fi.Flag(ok)
@@ -391,5 +398,27 @@ func TestField_Env(t *testing.T) {
 		t.Fatal("Flag b not found")
 	} else if got, want := f.Env(), ""; got != want {
 		t.Errorf("Flag b env: got %q, want %q", got, want)
+	}
+}
+
+func TestPreferValueToText(t *testing.T) {
+	var tf struct {
+		F bothValue `flag:"both,FlagAndText"`
+	}
+	fs := flag.NewFlagSet("test", flag.PanicOnError)
+	flax.MustBind(fs, &tf)
+
+	const text = "xyzzy"
+	if err := fs.Parse([]string{"--both", text}); err != nil {
+		t.Fatalf("Flag parse: unexpected error: %v", err)
+	}
+
+	// The flag supports both the Value interface and text marshaling.
+	// Verify that we preferred Value.
+	if got := tf.F.flagValue.value; got != text {
+		t.Errorf("Flag value: got %q, want %q", got, text)
+	}
+	if got := tf.F.textFlag.value; got != "" {
+		t.Errorf("Text flag: got %q, want empty", got)
 	}
 }

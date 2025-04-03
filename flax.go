@@ -2,6 +2,51 @@
 
 // Package flax implements a helper for attaching flags to the fields of
 // struct values.
+//
+// # Overview
+//
+// Typical use is to define one or more structs carrying groups of related
+// flags, identified by field tags. For example, here is a struct with three
+// flags:
+//
+//	var flags struct {
+//	   Input  string `flag:"input,Input file name (required)"`
+//	   DryRun bool   `flag:"dry-run,Dry run, do not make any changes"`
+//	   Count  int    `flag:"count,default=1,Number of iteration"`
+//	}
+//
+// The [Check] function identifies tagged fields that can then be bound to a
+// standard [flag.FlagSet] for flag parsing. For example:
+//
+//	fs, err := flax.Check(&flags)
+//	...
+//	fs.Bind(flag.CommandLine)
+//	...
+//	flag.Parse()
+//
+// The [Check] function reports an error if its argument does not contain any
+// valid flag targets. The [Check] documentation details the field tag format
+// and flag rules.
+//
+// For the common case of binding flags at program initialization, the
+// [MustBind] and [MustBindAll] functions combine these two steps, with a panic
+// in case of error.
+//
+//	flax.MustBindAll(flagSet, &flags1, &flags2)
+//
+// # Supported Types
+//
+// This package can bind a field of any of the default types supported by the
+// standard [flag] package, including any type that implements the [flag.Value]
+// interface.
+//
+// In addition, a field whose type implements the [encoding.TextMarshaler] and
+// [encoding.TextUnmarshaler] interfaces can be bound as a flag, using the
+// UnmarshalText method to "set" the flag and using its MarshalText method to
+// render the value of the field.
+//
+// If a field implements both [flag.Value] and the text marshaling interfaces,
+// the flag value implementation is used.
 package flax
 
 import (
@@ -148,6 +193,12 @@ func (fi *Field) Bind(fs *flag.FlagSet) {
 		usage += fmt.Sprintf(" [env: %s]", fi.env)
 	}
 	switch t := fi.target.(type) {
+	case flag.Value:
+		fs.Var(t, fi.Name, usage)
+
+	case textFlag:
+		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), usage)
+
 	case *bool:
 		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), usage)
 
@@ -163,9 +214,6 @@ func (fi *Field) Bind(fs *flag.FlagSet) {
 	case *string:
 		fs.StringVar(t, fi.Name, fi.dvalue.(string), usage)
 
-	case textFlag:
-		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), usage)
-
 	case *time.Duration:
 		fs.DurationVar(t, fi.Name, fi.dvalue.(time.Duration), usage)
 
@@ -174,9 +222,6 @@ func (fi *Field) Bind(fs *flag.FlagSet) {
 
 	case *uint64:
 		fs.Uint64Var(t, fi.Name, fi.dvalue.(uint64), usage)
-
-	case flag.Value:
-		fs.Var(t, fi.Name, usage)
 
 	default:
 		panic(fmt.Sprintf("cannot flag type %T", t))
