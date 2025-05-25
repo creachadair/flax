@@ -248,7 +248,7 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 	}
 	if dtag, ok := ft.Tag.Lookup("flag-default"); ok {
 		if dstring != "" {
-			return nil, fmt.Errorf("field %q default tag and string are both set", ft.Name)
+			return nil, errors.New("default tag and string are both set")
 		}
 		dstring = dtag
 	}
