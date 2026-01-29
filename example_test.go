@@ -17,9 +17,8 @@ var flags struct {
 	Ignored int
 }
 
-func init() { flax.MustBind(flag.CommandLine, &flags) }
-
 func Example() {
+	flax.MustBind(flag.CommandLine, &flags)
 	flag.Parse()
 
 	if flags.Debug {
