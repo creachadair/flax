@@ -128,7 +128,7 @@ func Check(v any) (Fields, error) {
 		return nil, errors.New("value is nil")
 	}
 	rp := reflect.ValueOf(v)
-	if rp.Kind() != reflect.Ptr {
+	if rp.Kind() != reflect.Pointer {
 		return nil, errors.New("value is not a pointer")
 	}
 	rv := rp.Elem()
