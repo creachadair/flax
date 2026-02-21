@@ -123,6 +123,8 @@ func MustCheck(v any) Fields {
 // Compatible types include bool, float64, int, int64, string, [time.Duration],
 // uint, and uint64, as well as any type implementing the [flag.Value] interface
 // or the [encoding.TextMarshaler] and [encoding.TextUnmarshaler] interfaces.
+// If a field implements both [flag.Value] and the text marshaling interfaces,
+// the flag value implementation is used.
 func Check(v any) (Fields, error) {
 	if v == nil {
 		return nil, errors.New("value is nil")
