@@ -91,36 +91,53 @@ func TestBasic(t *testing.T) {
 
 func TestCheckError(t *testing.T) {
 	tests := []struct {
-		label string
-		input any
+		label   string
+		input   any
+		wantErr string
 	}{
-		{"not a pointer", struct{}{}},
-		{"not a struct", new(int)},
-		{"empty struct", &struct{}{}},
+		{"not a pointer", struct{}{}, "not a pointer"},
+		{"not a struct", new(int), "not a struct"},
 
+		{"empty struct", &struct{}{}, "no flaggable fields"},
 		{"none flaggable", &struct {
 			foo int
 			Bar float64
 			Baz func()
-		}{}},
+		}{}, "no flaggable fields"},
 
 		{"incompatible type", &struct {
 			F []byte `flag:"bad,type"`
-		}{}},
+		}{}, "not flag compatible"},
 
-		{"missing usage", &struct {
+		{"invalid tag", &struct {
 			S string `flag:"nousage"`
-		}{}},
+		}{}, "invalid flag tag"},
+
+		{"missing usage 1", &struct {
+			S string `flag:"nousage,default=x"`
+		}{}, "missing usage string"},
+		{"missing usage 2", &struct {
+			S string `flag:"nousage,default='xyz'"`
+		}{}, "missing usage string"},
+
+		{"unclosed quotes 1", &struct {
+			S string `flag:"n,default='abc"`
+		}{}, "unclosed quotes in default"},
+		{"unclosed quotes 2", &struct {
+			S string `flag:"n,default='abc''def"`
+		}{}, "unclosed quotes in default"},
 
 		{"empty name", &struct {
 			S string `flag:",empty name"`
-		}{}},
+		}{}, "empty flag name"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.label, func(t *testing.T) {
 			fi, err := flax.Check(tc.input)
 			if err == nil {
 				t.Fatalf("Got %+v, want error", fi)
+			} else if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("Got error %v, want %q", err, tc.wantErr)
 			}
 		})
 	}
