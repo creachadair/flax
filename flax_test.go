@@ -5,6 +5,7 @@ package flax_test
 import (
 	"bytes"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"reflect"
@@ -41,19 +42,41 @@ type bothValue struct {
 	flagValue
 }
 
+type stringish string
+type boolish bool
+type intish int
+
+// A stringValue has underlying type string, but implements [flag.Value], so
+// that should be preferred.
+type stringValue string
+
+func (sv *stringValue) Set(s string) error { *sv = stringValue("Set:" + s); return nil }
+func (sv stringValue) String() string      { return string(sv) }
+
+// An int64Text has underlying type int64, but implements text marshaling so
+// that should be preferred.
+type int64Text int64
+
+func (z *int64Text) UnmarshalText(text []byte) error { *z = int64Text(len(text)); return nil }
+func (z int64Text) MarshalText() ([]byte, error)     { return fmt.Appendf(nil, "%d", z), nil }
+
 func TestBasic(t *testing.T) {
 	// Make sure we can successfully bind all the flag types.
 	var v struct {
-		B   bool      `flag:"bool,Boolean"`
-		F   float64   `flag:"float64,Float64"`
-		Z   int       `flag:"int,Int"`
-		Z64 int64     `flag:"int64,Int64"`
-		S   string    `flag:"string,String"`
-		T   textFlag  `flag:"text,Text"`
-		U   uint      `flag:"uint,Uint"`
-		U64 uint64    `flag:"uint64,Uint64"`
-		FV  flagValue `flag:"flag-value,FlagValue"`
-		BV  bothValue `flag:"flag-and-text,FlagAndText"`
+		B    bool        `flag:"bool,Boolean"`
+		F    float64     `flag:"float64,Float64"`
+		Z    int         `flag:"int,Int"`
+		Z64  int64       `flag:"int64,Int64"`
+		S    string      `flag:"string,String"`
+		T    textFlag    `flag:"text,Text"`
+		U    uint        `flag:"uint,Uint"`
+		U64  uint64      `flag:"uint64,Uint64"`
+		FV   flagValue   `flag:"flag-value,FlagValue"`
+		BV   bothValue   `flag:"flag-and-text,FlagAndText"`
+		Sish stringish   `flag:"stringish,namedUnderlyingString"`
+		Bish boolish     `flag:"boolish,namedUnderlyingBool"`
+		Zish intish      `flag:"intish,namedUnderlyingInt"`
+		SFV  stringValue `flag:"string-flag-value,namedUnderlyingStringFlagValue"`
 	}
 	t.Run("CheckBind", func(t *testing.T) {
 		fi, err := flax.Check(&v)
@@ -73,6 +96,7 @@ func TestBasic(t *testing.T) {
 		good := []string{
 			"bool", "float64", "int", "int64", "string", "text",
 			"uint", "uint64", "flag-value", "flag-and-text",
+			"stringish", "string-flag-value",
 		}
 		for _, ok := range good {
 			got := fi.Flag(ok)
@@ -209,6 +233,9 @@ func TestBindDefaults(t *testing.T) {
 		{"int tag", &struct {
 			X int `flag:"x,y" flag-default:"13"`
 		}{}, 13},
+		{"intish", &struct {
+			X intish `flag:"x,default=15,y"`
+		}{}, intish(15)},
 
 		{"int from env", &struct {
 			X int `flag:"x,default=$TEST_INT,y"`
@@ -230,6 +257,9 @@ func TestBindDefaults(t *testing.T) {
 		{"string tag", &struct {
 			X string `flag:"x,y" flag-default:"cork bat"`
 		}{}, "cork bat"},
+		{"stringish", &struct {
+			X stringish `flag:"x,default=abc,y"`
+		}{}, stringish("abc")},
 
 		{"complex string", &struct {
 			X string `flag:"x,default='a, b, c',y"`
@@ -237,6 +267,9 @@ func TestBindDefaults(t *testing.T) {
 		{"complex string tag", &struct {
 			X string `flag:"x,y" flag-default:"a, b, c"`
 		}{}, "a, b, c"},
+		{"complex stringish", &struct {
+			X stringish `flag:"x,default='a, b, c',y"`
+		}{}, stringish("a, b, c")},
 
 		{"internal quotes", &struct {
 			X string `flag:"x,default='p,'',q',y"`
@@ -251,6 +284,9 @@ func TestBindDefaults(t *testing.T) {
 		{"env string tag", &struct {
 			X string `flag:"x,y" flag-default:"$TEST_INT"`
 		}{}, "12345"},
+		{"env stringish", &struct {
+			X stringish `flag:"x,default=$TEST_INT,y"`
+		}{}, stringish("12345")},
 
 		{"env esc string", &struct {
 			X string `flag:"x,default=$$TEST_INT,y"` // doubled, do not expand
@@ -328,6 +364,14 @@ func TestBindDefaults(t *testing.T) {
 		{"star flagValue tag", &struct {
 			X flagValue `flag:"x,y" flag-default:"**"`
 		}{X: flagValue{"qqq"}}, flagValue{"*"}},
+
+		{"stringValue", &struct {
+			X stringValue `flag:"x,default=foo,y"`
+		}{}, stringValue("Set:foo")},
+
+		{"int64Text", &struct {
+			X int64Text `flag:"x,default=apple,y"` // length 5
+		}{X: 10}, int64Text(5)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.label, func(t *testing.T) {

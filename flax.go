@@ -36,17 +36,17 @@
 //
 // # Supported Types
 //
-// This package can bind a field of any of the default types supported by the
-// standard [flag] package, including any type that implements the [flag.Value]
-// interface.
-//
-// In addition, a field whose type implements the [encoding.TextMarshaler] and
-// [encoding.TextUnmarshaler] interfaces can be bound as a flag, using the
-// UnmarshalText method to "set" the flag and using its MarshalText method to
-// render the value of the field.
+// This package can bind a field whose type (or underlying type) is any of the
+// default types supported by the standard [flag] package, as well as any type
+// that implements the [flag.Value] interface.  In addition, a field whose type
+// implements the [encoding.TextMarshaler] and [encoding.TextUnmarshaler]
+// interfaces can be bound as a flag, using the UnmarshalText method to "set"
+// the flag and using its MarshalText method to render the value of the field.
 //
 // If a field implements both [flag.Value] and the text marshaling interfaces,
-// the flag value implementation is used.
+// the flag value implementation is preferred.
+//
+// See [Check] for more details.
 package flax
 
 import (
@@ -105,7 +105,7 @@ func MustCheck(v any) Fields {
 //
 //	flag:"name,default='a, b',Usage string"
 //
-// To escape a quote, double it ("”").  If the default value begins with "$",
+// To escape a quote, double it ("'​'").  If the default value begins with "$",
 // it is interpreted as the name of an environment variable to read for the
 // default. Double the "$" to escape this interpretation.
 //
@@ -124,6 +124,18 @@ func MustCheck(v any) Fields {
 // or the [encoding.TextMarshaler] and [encoding.TextUnmarshaler] interfaces.
 // If a field implements both [flag.Value] and the text marshaling interfaces,
 // the flag value implementation is used.
+//
+// In addition, a field that does not implement one of these interfaces, but
+// whose underlying type is supported by the flag package, is treated as a flag
+// of that underlying type. For example, given:
+//
+//	type T int
+//
+//	var flags struct{
+//	   Thing T `flag:"thing,A value of integer type"`
+//	}
+//
+// the Thing field is flaggable, and will be treated as having type "int".
 func Check(v any) (Fields, error) {
 	if v == nil {
 		return nil, errors.New("value is nil")
@@ -193,38 +205,37 @@ func (fi *Field) Bind(fs *flag.FlagSet) {
 	if fi.env != "" {
 		usage += fmt.Sprintf(" [env: %s]", fi.env)
 	}
+	// Check the interfaces and time.Duration first, to prefer those to a match
+	// on underlying type alone.
 	switch t := fi.target.(type) {
 	case flag.Value:
 		fs.Var(t, fi.Name, usage)
-
+		return
 	case textFlag:
 		fs.TextVar(t, fi.Name, fi.dvalue.(textFlag), usage)
-
-	case *bool:
-		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), usage)
-
-	case *float64:
-		fs.Float64Var(t, fi.Name, fi.dvalue.(float64), usage)
-
-	case *int:
-		fs.IntVar(t, fi.Name, fi.dvalue.(int), usage)
-
-	case *int64:
-		fs.Int64Var(t, fi.Name, fi.dvalue.(int64), usage)
-
-	case *string:
-		fs.StringVar(t, fi.Name, fi.dvalue.(string), usage)
-
+		return
 	case *time.Duration:
 		fs.DurationVar(t, fi.Name, fi.dvalue.(time.Duration), usage)
+		return
+	}
 
-	case *uint:
+	// Reaching here, we know the type does not have special behaviour, so we
+	// can bind it in the conventional way for its underlying type.
+	if t, ok := convertsTo[bool](fi.target); ok {
+		fs.BoolVar(t, fi.Name, fi.dvalue.(bool), usage)
+	} else if t, ok := convertsTo[float64](fi.target); ok {
+		fs.Float64Var(t, fi.Name, fi.dvalue.(float64), usage)
+	} else if t, ok := convertsTo[int](fi.target); ok {
+		fs.IntVar(t, fi.Name, fi.dvalue.(int), usage)
+	} else if t, ok := convertsTo[int64](fi.target); ok {
+		fs.Int64Var(t, fi.Name, fi.dvalue.(int64), usage)
+	} else if t, ok := convertsTo[string](fi.target); ok {
+		fs.StringVar(t, fi.Name, fi.dvalue.(string), usage)
+	} else if t, ok := convertsTo[uint](fi.target); ok {
 		fs.UintVar(t, fi.Name, fi.dvalue.(uint), usage)
-
-	case *uint64:
+	} else if t, ok := convertsTo[uint64](fi.target); ok {
 		fs.Uint64Var(t, fi.Name, fi.dvalue.(uint64), usage)
-
-	default:
+	} else {
 		panic(fmt.Sprintf("cannot flag type %T", t))
 	}
 }
@@ -261,82 +272,11 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 		target: vptr,
 	}
 
-	// Check for compatible type.
+	// Check for compatible type. Order matters here: We want to check for the
+	// interface types first, before deferring to an underlying type. Note that
+	// we include time.Duration as a special case here, as it has its own syntax
+	// that we want to take precedence over the underlying int64.
 	switch t := vptr.(type) {
-	case *bool:
-		d, err := parseDefault(info, dstring, *t, strconv.ParseBool)
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *float64:
-		d, err := parseDefault(info, dstring, *t, func(s string) (float64, error) {
-			return strconv.ParseFloat(s, 64)
-		})
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *int:
-		d, err := parseDefault(info, dstring, *t, strconv.Atoi)
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *int64:
-		d, err := parseDefault(info, dstring, *t, func(s string) (int64, error) {
-			return strconv.ParseInt(s, 10, 64)
-		})
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *string:
-		// We call parseDefault here for the env handling; it can't fail.
-		d, _ := parseDefault(info, dstring, *t, func(s string) (string, error) {
-			return s, nil
-		})
-		info.dvalue = d
-
-	case textFlag:
-		_, err := parseDefault(info, dstring, nil, func(s string) (any, error) {
-			return nil, t.UnmarshalText([]byte(s))
-		})
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = t
-
-	case *time.Duration:
-		d, err := parseDefault(info, dstring, *t, time.ParseDuration)
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *uint:
-		d, err := parseDefault(info, dstring, *t, func(s string) (uint, error) {
-			u, err := strconv.ParseUint(s, 10, 64)
-			return uint(u), err
-		})
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
-	case *uint64:
-		d, err := parseDefault(info, dstring, *t, func(s string) (uint64, error) {
-			return strconv.ParseUint(s, 10, 64)
-		})
-		if err != nil {
-			return nil, err
-		}
-		info.dvalue = d
-
 	case flag.Value:
 		_, err := parseDefault(info, dstring, nil, func(s string) (any, error) {
 			return nil, t.Set(s)
@@ -345,11 +285,78 @@ func parseFieldValue(ft reflect.StructField, fv reflect.Value) (*Field, error) {
 			return nil, err
 		}
 		info.dvalue = t
-
+	case textFlag:
+		_, err := parseDefault(info, dstring, nil, func(s string) (any, error) {
+			return nil, t.UnmarshalText([]byte(s))
+		})
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = t
+	case *time.Duration:
+		d, err := parseDefault(info, dstring, *t, time.ParseDuration)
+		if err != nil {
+			return nil, err
+		}
+		info.dvalue = d
 	default:
-		return nil, fmt.Errorf("type %T is not flag compatible", t)
+		// Reaching here, the target does not have special behaviour.
+		// Accept any pointer convertible to one of the supported flag types.
+		if t, ok := convertsTo[bool](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, strconv.ParseBool)
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else if t, ok := convertsTo[float64](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, func(s string) (float64, error) {
+				return strconv.ParseFloat(s, 64)
+			})
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else if t, ok := convertsTo[int](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, strconv.Atoi)
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else if t, ok := convertsTo[int64](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, func(s string) (int64, error) {
+				return strconv.ParseInt(s, 10, 64)
+			})
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else if t, ok := convertsTo[string](vptr); ok {
+			// We call parseDefault here for the env handling; it can't fail.
+			d, _ := parseDefault(info, dstring, *t, func(s string) (string, error) {
+				return s, nil
+			})
+			info.dvalue = d
+		} else if t, ok := convertsTo[uint](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, func(s string) (uint, error) {
+				u, err := strconv.ParseUint(s, 10, 64)
+				return uint(u), err
+			})
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else if t, ok := convertsTo[uint64](vptr); ok {
+			d, err := parseDefault(info, dstring, *t, func(s string) (uint64, error) {
+				return strconv.ParseUint(s, 10, 64)
+			})
+			if err != nil {
+				return nil, err
+			}
+			info.dvalue = d
+		} else {
+			return nil, fmt.Errorf("type %T is not flag compatible", vptr)
+		}
 	}
-
 	return info, nil
 }
 
@@ -443,4 +450,12 @@ func parseDefault[T any](f *Field, s string, self T, parse func(string) (T, erro
 type textFlag interface {
 	MarshalText() ([]byte, error)
 	UnmarshalText([]byte) error
+}
+
+func convertsTo[T any](v any) (*T, bool) {
+	t := reflect.TypeFor[*T]()
+	if rv := reflect.ValueOf(v); rv.Type().ConvertibleTo(t) {
+		return rv.Convert(t).Interface().(*T), true
+	}
+	return nil, false
 }
